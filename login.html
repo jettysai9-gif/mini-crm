@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini CRM — Staff Login</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:0;background:#f6f7fb}
+    header{padding:18px 20px;background:#111;color:#fff}
+    main{max-width:520px;margin:22px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e7ef;border-radius:14px;padding:16px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+    label{display:block;font-size:13px;margin:10px 0 6px;color:#333}
+    input{width:100%;padding:10px 12px;border:1px solid #d7d7e2;border-radius:10px;font-size:14px}
+    button{margin-top:12px;width:100%;padding:10px 14px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:700;cursor:pointer}
+    .msg{margin-top:10px;font-size:14px}
+    .ok{color:#0a7a2f}
+    .err{color:#b00020}
+    a{color:#111}
+    .demo{background:#fff8d6;border:1px solid #f0df9a;padding:10px;border-radius:10px;font-size:13px;color:#333;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="max-width:520px;margin:0 auto;padding:0 16px;">
+      <div style="font-weight:800;">Mini CRM — Staff Login</div>
+    </div>
+  </header>
+
+  <main>
+    <div class="demo">
+      <b>Marker access (put your real creds here):</b><br/>
+      Email: <code>staff@example.com</code><br/>
+      Password: <code>ReplaceMe123!</code>
+    </div>
+
+    <div class="card">
+      <form id="loginForm">
+        <label for="email">Email</label>
+        <input id="email" type="email" required />
+        <label for="password">Password</label>
+        <input id="password" type="password" required />
+        <button id="btn" type="submit">Log in</button>
+        <div id="msg" class="msg"></div>
+      </form>
+
+      <div style="margin-top:12px;font-size:13px;color:#555;">
+        <a href="public.html">← Back to public page</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA6EP2hVOPG2090JcuTBXLyoQYH3GaU_a0",
+        authDomain: "mini-crm-sales-pipeline.firebaseapp.com",
+        projectId: "mini-crm-sales-pipeline",
+        storageBucket: "mini-crm-sales-pipeline.firebasestorage.app",
+        messagingSenderId: "663420458264",
+        appId: "1:663420458264:web:184191421bf423022c7a6d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const form = document.getElementById("loginForm");
+    const btn = document.getElementById("btn");
+    const msgEl = document.getElementById("msg");
+
+    function showMsg(text, kind){
+      msgEl.textContent = text;
+      msgEl.className = "msg " + (kind === "ok" ? "ok" : "err");
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        // Already logged in → send to staff
+        window.location.href = "staff.html";
+      }
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      showMsg("", "ok");
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      btn.disabled = true;
+      btn.textContent = "Logging in...";
+
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        showMsg("Logged in! Redirecting...", "ok");
+        window.location.href = "staff.html";
+      } catch (err) {
+        showMsg("Login failed: " + (err?.message || err), "err");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Log in";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini CRM — Staff Pipeline</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:0;background:#f6f7fb;color:#111}
+    header{padding:14px 18px;background:#111;color:#fff}
+    header a{color:#fff;text-decoration:underline}
+    main{max-width:1200px;margin:16px auto;padding:0 16px}
+    .bar{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .grid{display:grid;grid-template-columns:repeat(6, minmax(220px, 1fr));gap:12px;overflow:auto;padding-bottom:10px}
+    .col{background:#fff;border:1px solid #e7e7ef;border-radius:14px;min-height:240px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+    .col h3{margin:0;padding:10px 12px;border-bottom:1px solid #eee;font-size:14px}
+    .list{padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+    .card{border:1px solid #e5e5ef;border-radius:12px;padding:10px;background:#fff}
+    .muted{color:#555;font-size:12px}
+    select,input{width:100%;padding:8px 10px;border:1px solid #d7d7e2;border-radius:10px;font-size:13px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+    .actions{display:flex;gap:8px;margin-top:10px}
+    button{padding:8px 10px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:650;cursor:pointer;font-size:13px}
+    button.secondary{background:#e9e9f2;color:#111}
+    .topmsg{margin-top:10px;font-size:13px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="bar" style="max-width:1200px;margin:0 auto;">
+      <div>
+        <div style="font-weight:900;">Mini CRM — Staff Pipeline</div>
+        <div style="opacity:.85;font-size:12px;">Real-time board from Firestore (no refresh needed)</div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <a href="insights.html">Insights</a>
+        <a href="public.html">Public Page</a>
+        <button id="logoutBtn" class="secondary">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="status" class="topmsg"></div>
+
+    <div class="grid" id="board">
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import {
+      getFirestore, collection, query, orderBy, onSnapshot,
+      doc, updateDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA6EP2hVOPG2090JcuTBXLyoQYH3GaU_a0",
+        authDomain: "mini-crm-sales-pipeline.firebaseapp.com",
+        projectId: "mini-crm-sales-pipeline",
+        storageBucket: "mini-crm-sales-pipeline.firebasestorage.app",
+        messagingSenderId: "663420458264",
+        appId: "1:663420458264:web:184191421bf423022c7a6d"
+    };
+
+    const STAGES = ["New","Contacted","Qualified","Proposal","Won","Lost"];
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const boardEl = document.getElementById("board");
+    const statusEl = document.getElementById("status");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+      window.location.href = "login.html";
+    });
+
+    function esc(s){ return (s ?? "").toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function fmtTs(ts){
+      try { return ts?.toDate ? ts.toDate().toLocaleString() : ""; } catch { return ""; }
+    }
+
+    function buildBoardShell(){
+      boardEl.innerHTML = "";
+      for (const stage of STAGES){
+        const col = document.createElement("div");
+        col.className = "col";
+        col.innerHTML = `<h3>${stage} <span id="count-${stage}" class="muted"></span></h3><div class="list" id="list-${stage}"></div>`;
+        boardEl.appendChild(col);
+      }
+    }
+
+    function render(leads){
+      for (const s of STAGES){
+        document.getElementById(`list-${s}`).innerHTML = "";
+        document.getElementById(`count-${s}`).textContent = "";
+      }
+
+      const counts = Object.fromEntries(STAGES.map(s => [s,0]));
+
+      for (const lead of leads){
+        const stage = STAGES.includes(lead.stage) ? lead.stage : "New";
+        counts[stage]++;
+
+        const listEl = document.getElementById(`list-${stage}`);
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const created = fmtTs(lead.createdAt);
+        const updated = fmtTs(lead.updatedAt);
+
+        card.innerHTML = `
+          <div style="font-weight:800;">${esc(lead.name)} <span class="muted">(${esc(lead.company)})</span></div>
+          <div class="muted">${esc(lead.email)} ${lead.phone ? " • " + esc(lead.phone) : ""}</div>
+          <div class="muted">Source: ${esc(lead.source)} • Created: ${esc(created)}</div>
+
+          <div class="row">
+            <div>
+              <div class="muted" style="margin:8px 0 4px;">Stage</div>
+              <select data-field="stage">
+                ${STAGES.map(s => `<option ${s===stage?"selected":""}>${s}</option>`).join("")}
+              </select>
+            </div>
+            <div>
+              <div class="muted" style="margin:8px 0 4px;">Est. Value (€)</div>
+              <input data-field="estValue" type="number" min="0" step="1" value="${Number(lead.estValue||0)}" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button data-action="save">Save</button>
+            <button data-action="open" class="secondary">Open</button>
+          </div>
+
+          <div class="muted" style="margin-top:8px;">Updated: ${esc(updated)}</div>
+        `;
+
+        card.querySelector('[data-action="open"]').addEventListener("click", () => {
+          window.location.href = `lead.html?id=${encodeURIComponent(lead.id)}`;
+        });
+
+        card.querySelector('[data-action="save"]').addEventListener("click", async () => {
+          const stageSel = card.querySelector('[data-field="stage"]').value;
+          const estValue = Number(card.querySelector('[data-field="estValue"]').value || 0);
+          if (estValue < 0) return alert("Est value cannot be negative.");
+
+          const ref = doc(db, "leads", lead.id);
+          const patch = {
+            stage: stageSel,
+            estValue,
+            updatedAt: serverTimestamp()
+          };
+
+          if ((stageSel === "Won" || stageSel === "Lost") && !lead.closedAt) {
+            patch.closedAt = serverTimestamp();
+          }
+
+          await updateDoc(ref, patch);
+        });
+
+        listEl.appendChild(card);
+      }
+
+      for (const s of STAGES){
+        document.getElementById(`count-${s}`).textContent = `• ${counts[s]}`;
+      }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        window.location.href = "login.html";
+        return;
+      }
+
+      buildBoardShell();
+      statusEl.textContent = `Signed in as ${user.email}. Listening for real-time updates...`;
+
+      const q = query(collection(db, "leads"), orderBy("createdAt", "desc"));
+      onSnapshot(q, (snap) => {
+        const leads = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        render(leads);
+      }, (err) => {
+        statusEl.textContent = "Firestore error: " + (err?.message || err);
+      });
+    });
+  </script>
+</body>
+</html>

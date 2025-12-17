@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini CRM — Lead Capture</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:0;background:#f6f7fb;color:#111}
+    header{padding:18px 20px;background:#111;color:#fff}
+    main{max-width:920px;margin:20px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e7ef;border-radius:14px;padding:16px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    label{display:block;font-size:13px;margin:8px 0 6px;color:#333}
+    input,select,textarea{width:100%;padding:10px 12px;border:1px solid #d7d7e2;border-radius:10px;font-size:14px}
+    textarea{min-height:90px;resize:vertical}
+    .actions{display:flex;gap:10px;align-items:center;margin-top:12px}
+    button{padding:10px 14px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:600;cursor:pointer}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    .msg{margin-top:10px;font-size:14px}
+    .ok{color:#0a7a2f}
+    .err{color:#b00020}
+    .hint{font-size:13px;color:#555;margin-top:10px}
+    a{color:#111}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="max-width:920px;margin:0 auto;padding:0 16px;">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;">
+        <div>
+          <div style="font-weight:800;">Mini CRM Sales Pipeline</div>
+          <div style="opacity:.85;font-size:13px;">Public lead capture (creates a Firestore record)</div>
+        </div>
+        <a href="login.html" style="color:#fff;text-decoration:underline;">Staff Login</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2 style="margin:0 0 8px;">Request a callback</h2>
+      <p style="margin:0 0 10px;color:#444;">Fill this in and our sales team will follow up.</p>
+
+      <form id="leadForm">
+        <div class="row">
+          <div>
+            <label for="name">Full name *</label>
+            <input id="name" required minlength="2" />
+          </div>
+          <div>
+            <label for="email">Email *</label>
+            <input id="email" type="email" required />
+          </div>
+          <div>
+            <label for="company">Company</label>
+            <input id="company" />
+          </div>
+          <div>
+            <label for="phone">Phone</label>
+            <input id="phone" />
+          </div>
+          <div>
+            <label for="source">Source</label>
+            <select id="source">
+              <option>Website</option>
+              <option>Referral</option>
+              <option>LinkedIn</option>
+              <option>Event</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="estValue">Estimated deal value (€)</label>
+            <input id="estValue" type="number" min="0" step="1" value="0" />
+          </div>
+        </div>
+
+        <label for="message">What are you looking for?</label>
+        <textarea id="message" placeholder="Brief details..."></textarea>
+
+        <div class="actions">
+          <button id="submitBtn" type="submit">Submit lead</button>
+          <div id="msg" class="msg"></div>
+        </div>
+        <div class="hint">After submit, this lead should appear in <b>staff.html</b> in real-time (no refresh).</div>
+      </form>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA6EP2hVOPG2090JcuTBXLyoQYH3GaU_a0",
+        authDomain: "mini-crm-sales-pipeline.firebaseapp.com",
+        projectId: "mini-crm-sales-pipeline",
+        storageBucket: "mini-crm-sales-pipeline.firebasestorage.app",
+        messagingSenderId: "663420458264",
+        appId: "1:663420458264:web:184191421bf423022c7a6d"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const form = document.getElementById("leadForm");
+    const submitBtn = document.getElementById("submitBtn");
+    const msgEl = document.getElementById("msg");
+
+    function showMsg(text, kind){
+      msgEl.textContent = text;
+      msgEl.className = "msg " + (kind === "ok" ? "ok" : "err");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      showMsg("", "ok");
+
+      const name = document.getElementById("name").value.trim();
+      const email = document.getElementById("email").value.trim().toLowerCase();
+      const company = document.getElementById("company").value.trim();
+      const phone = document.getElementById("phone").value.trim();
+      const source = document.getElementById("source").value;
+      const estValue = Number(document.getElementById("estValue").value || 0);
+      const message = document.getElementById("message").value.trim();
+
+      if (!name || name.length < 2) return showMsg("Please enter a valid name.", "err");
+      if (!email.includes("@")) return showMsg("Please enter a valid email.", "err");
+      if (estValue < 0) return showMsg("Estimated value cannot be negative.", "err");
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+
+      try {
+        await addDoc(collection(db, "leads"), {
+          name, email, company, phone, source,
+          estValue,
+          message,
+          stage: "New",
+          internalNotes: "",
+          owner: "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          closedAt: null
+        });
+
+        form.reset();
+        document.getElementById("estValue").value = 0;
+        showMsg("Success! Your lead was submitted.", "ok");
+      } catch (err) {
+        showMsg("Error submitting lead: " + (err?.message || err), "err");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit lead";
+      }
+    });
+  </script>
+</body>
+</html>

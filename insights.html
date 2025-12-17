@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini CRM — Insights</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:0;background:#f6f7fb;color:#111}
+    header{padding:14px 18px;background:#111;color:#fff}
+    header a{color:#fff;text-decoration:underline}
+    main{max-width:1100px;margin:16px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{background:#fff;border:1px solid #e7e7ef;border-radius:14px;padding:16px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+    .kpi{font-size:28px;font-weight:900;margin:6px 0}
+    .muted{color:#555;font-size:13px}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;font-size:13px}
+    code{background:#f2f2f8;padding:2px 6px;border-radius:6px}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-weight:900;">Mini CRM — Insights</div>
+        <div style="opacity:.85;font-size:12px;">Real-time operational view derived from Firestore</div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <a href="staff.html">Pipeline</a>
+        <a href="public.html">Public Page</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <div class="card">
+        <div class="muted">Total leads</div>
+        <div id="total" class="kpi">—</div>
+        <div class="muted">Leads created in last 24h: <b id="last24">—</b></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Pipeline value (open stages)</div>
+        <div id="pipelineValue" class="kpi">—</div>
+        <div class="muted">Conversion rate (Won / Closed): <b id="conv">—</b></div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;margin-bottom:6px;">Stage distribution</div>
+        <div id="stages" class="muted">—</div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:800;margin-bottom:6px;">Recent leads</div>
+        <div class="muted">This list updates in real-time.</div>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Stage</th><th>Value</th><th>Created</th></tr>
+          </thead>
+          <tbody id="recent"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore, collection, query, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA6EP2hVOPG2090JcuTBXLyoQYH3GaU_a0",
+        authDomain: "mini-crm-sales-pipeline.firebaseapp.com",
+        projectId: "mini-crm-sales-pipeline",
+        storageBucket: "mini-crm-sales-pipeline.firebasestorage.app",
+        messagingSenderId: "663420458264",
+        appId: "1:663420458264:web:184191421bf423022c7a6d"
+    };
+    
+    const STAGES = ["New","Contacted","Qualified","Proposal","Won","Lost"];
+    const OPEN_STAGES = ["New","Contacted","Qualified","Proposal"];
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const totalEl = document.getElementById("total");
+    const last24El = document.getElementById("last24");
+    const pipelineEl = document.getElementById("pipelineValue");
+    const convEl = document.getElementById("conv");
+    const stagesEl = document.getElementById("stages");
+    const recentEl = document.getElementById("recent");
+
+    function fmtTs(ts){
+      try { return ts?.toDate ? ts.toDate().toLocaleString() : ""; } catch { return ""; }
+    }
+    function euro(n){ return "€" + Number(n||0).toLocaleString(); }
+
+    onAuthStateChanged(auth, (user) => {
+      if (!user) return (location.href = "login.html");
+
+      const q = query(collection(db, "leads"), orderBy("createdAt", "desc"));
+      onSnapshot(q, (snap) => {
+        const leads = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const now = Date.now();
+        const dayAgo = now - 24*60*60*1000;
+
+        const counts = Object.fromEntries(STAGES.map(s => [s,0]));
+        let pipelineValue = 0;
+        let won = 0, lost = 0;
+
+        let last24 = 0;
+
+        for (const L of leads){
+          const stage = STAGES.includes(L.stage) ? L.stage : "New";
+          counts[stage]++;
+
+          if (OPEN_STAGES.includes(stage)) pipelineValue += Number(L.estValue||0);
+          if (stage === "Won") won++;
+          if (stage === "Lost") lost++;
+
+          const created = L.createdAt?.toDate ? L.createdAt.toDate().getTime() : null;
+          if (created && created >= dayAgo) last24++;
+        }
+
+        totalEl.textContent = leads.length.toLocaleString();
+        last24El.textContent = last24.toLocaleString();
+        pipelineEl.textContent = euro(pipelineValue);
+
+        const closed = won + lost;
+        const conv = closed > 0 ? (won / closed) : 0;
+        convEl.textContent = (conv * 100).toFixed(1) + "%";
+
+        stagesEl.innerHTML = STAGES.map(s => `<div><code>${s}</code> ${counts[s]}</div>`).join("");
+
+        recentEl.innerHTML = leads.slice(0, 8).map(L => `
+          <tr>
+            <td>${(L.name||"")}</td>
+            <td>${(L.stage||"New")}</td>
+            <td>${euro(L.estValue)}</td>
+            <td>${fmtTs(L.createdAt)}</td>
+          </tr>
+        `).join("");
+      });
+    });
+  </script>
+</body>
+</html>

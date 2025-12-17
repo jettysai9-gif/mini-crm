@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini CRM — Lead Detail</title>
+  <style>
+    body{font-family:system-ui,Arial;margin:0;background:#f6f7fb}
+    header{padding:14px 18px;background:#111;color:#fff}
+    header a{color:#fff;text-decoration:underline}
+    main{max-width:920px;margin:16px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e7e7ef;border-radius:14px;padding:16px;box-shadow:0 8px 18px rgba(0,0,0,.04)}
+    .muted{color:#555;font-size:13px}
+    label{display:block;font-size:13px;margin:10px 0 6px;color:#333}
+    input,textarea{width:100%;padding:10px 12px;border:1px solid #d7d7e2;border-radius:10px;font-size:14px}
+    textarea{min-height:140px;resize:vertical}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    button{padding:10px 14px;border:0;border-radius:10px;background:#111;color:#fff;font-weight:700;cursor:pointer}
+    .actions{display:flex;gap:10px;align-items:center;margin-top:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <div style="max-width:920px;margin:0 auto;display:flex;justify-content:space-between;gap:12px;">
+      <div>
+        <div style="font-weight:900;">Lead Detail</div>
+        <div style="opacity:.85;font-size:12px;">Staff-only: internal notes + owner</div>
+      </div>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <a href="staff.html">Pipeline</a>
+        <a href="insights.html">Insights</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div id="meta" class="muted">Loading...</div>
+
+      <div class="row" style="margin-top:10px;">
+        <div>
+          <label>Owner</label>
+          <input id="owner" placeholder="e.g., Victor" />
+        </div>
+        <div>
+          <label>Last updated</label>
+          <input id="updated" disabled />
+        </div>
+      </div>
+
+      <label>Internal notes</label>
+      <textarea id="notes" placeholder="Call notes, next steps, objections, etc."></textarea>
+
+      <div class="actions">
+        <button id="saveBtn">Save</button>
+        <div id="msg" class="muted"></div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore, doc, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyA6EP2hVOPG2090JcuTBXLyoQYH3GaU_a0",
+        authDomain: "mini-crm-sales-pipeline.firebaseapp.com",
+        projectId: "mini-crm-sales-pipeline",
+        storageBucket: "mini-crm-sales-pipeline.firebasestorage.app",
+        messagingSenderId: "663420458264",
+        appId: "1:663420458264:web:184191421bf423022c7a6d"
+    };
+    
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const params = new URLSearchParams(location.search);
+    const id = params.get("id");
+
+    const metaEl = document.getElementById("meta");
+    const ownerEl = document.getElementById("owner");
+    const updatedEl = document.getElementById("updated");
+    const notesEl = document.getElementById("notes");
+    const msgEl = document.getElementById("msg");
+    const saveBtn = document.getElementById("saveBtn");
+
+    function fmtTs(ts){
+      try { return ts?.toDate ? ts.toDate().toLocaleString() : ""; } catch { return ""; }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      if (!user) return (location.href = "login.html");
+      if (!id) return (metaEl.textContent = "Missing lead id in URL.");
+
+      const ref = doc(db, "leads", id);
+      let current = null;
+
+      onSnapshot(ref, (snap) => {
+        if (!snap.exists()) {
+          metaEl.textContent = "Lead not found.";
+          return;
+        }
+        current = { id: snap.id, ...snap.data() };
+
+        metaEl.textContent =
+          `${current.name} • ${current.email} • Stage: ${current.stage} • Value: €${Number(current.estValue||0)}`;
+
+        ownerEl.value = current.owner || "";
+        notesEl.value = current.internalNotes || "";
+        updatedEl.value = fmtTs(current.updatedAt);
+      });
+
+      saveBtn.addEventListener("click", async () => {
+        if (!current) return;
+        saveBtn.disabled = true;
+        msgEl.textContent = "Saving...";
+
+        await updateDoc(ref, {
+          owner: ownerEl.value.trim(),
+          internalNotes: notesEl.value.trim(),
+          updatedAt: serverTimestamp()
+        });
+
+        msgEl.textContent = "Saved. (Should reflect in Insights instantly.)";
+        saveBtn.disabled = false;
+      });
+    });
+  </script>
+</body>
+</html>
